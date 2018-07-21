@@ -16,8 +16,19 @@
     <FavoriteEmbeddedRegisters />
     <LiveVariables>
       <LiveVariable>
-        <Expression>EC20_MSG</Expression>
-        <Type>Invalid</Type>
+        <Expression>imax</Expression>
+        <Type>UInt32</Type>
+        <Enabled>true</Enabled>
+        <Breakpoint>
+          <ComparisonMode>Equals</ComparisonMode>
+          <Enabled>false</Enabled>
+        </Breakpoint>
+        <Plot>false</Plot>
+        <IsCollapsed>false</IsCollapsed>
+      </LiveVariable>
+      <LiveVariable>
+        <Expression>vbat</Expression>
+        <Type>UInt32</Type>
         <Enabled>true</Enabled>
         <Breakpoint>
           <ComparisonMode>Equals</ComparisonMode>

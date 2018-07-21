@@ -120,6 +120,7 @@ int main(void)
   MX_USART1_UART_Init();
   MX_USART2_UART_Init();
   MX_TIM2_Init();
+  MX_TIM5_Init();
   /* USER CODE BEGIN 2 */
 	
 //	__HAL_UART_DISABLE_IT(&huart2, UART_IT_IDLE);

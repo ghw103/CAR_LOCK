@@ -48,7 +48,9 @@ EC20_MSG_T  EC20_MSG ;
 
 	 
 	 void User_UART_IRQHandler(UART_HandleTypeDef *huart);	 
-
+void USER_Printf(const char *pFormat, ...);
 #endif
+	 
+	 
 	 
 	 

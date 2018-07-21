@@ -59,6 +59,9 @@
 #include "gpio.h"
 #include <semphr.h>
 #include <stdarg.h>
+
+#include "lock.h"
+
 /* USER CODE END Includes */
 
 /* Variables -----------------------------------------------------------------*/
@@ -66,8 +69,11 @@ osThreadId defaultTaskHandle;
 osThreadId MQTT_TaskHandle;
 osThreadId decod_TaskHandle;
 osThreadId monitorTaskHandle;
+osThreadId controlTaskHandle;
 osMessageQId EC20QueueHandle;
 osMessageQId mqttQueueHandle;
+osMessageQId controlQueueHandle;
+osMessageQId statusQueueHandle;
 
 /* USER CODE BEGIN Variables */
 
@@ -78,16 +84,16 @@ void StartDefaultTask(void const * argument);
 void U_MQTT(void const * argument);
 void decoding(void const * argument);
 void monitor(void const * argument);
+void control(void const * argument);
 
 void MX_FREERTOS_Init(void); /* (MISRA C 2004 rule 8.1) */
 
 /* USER CODE BEGIN FunctionPrototypes */
 #define COUNTOF(__BUFFER__)   (sizeof(__BUFFER__) / sizeof(*(__BUFFER__)))
-void USER_Printf(const char *pFormat, ...);
 uint8_t ec20_cmd(char * cmd, char * ack, uint8_t retry, uint16_t timeout);
-uint8_t openlock(void);
-uint8_t closelock(void);
-uint8_t stoplock(void);
+//uint8_t openlock(void);
+//uint8_t closelock(void);
+//uint8_t stoplock(void);
 /* USER CODE END FunctionPrototypes */
 
 /* Hook prototypes */
@@ -128,6 +134,10 @@ void MX_FREERTOS_Init(void) {
   osThreadDef(monitorTask, monitor, osPriorityNormal, 0, 256);
   monitorTaskHandle = osThreadCreate(osThread(monitorTask), NULL);
 
+  /* definition and creation of controlTask */
+  osThreadDef(controlTask, control, osPriorityAboveNormal, 0, 256);
+  controlTaskHandle = osThreadCreate(osThread(controlTask), NULL);
+
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
   /* USER CODE END RTOS_THREADS */
@@ -135,13 +145,23 @@ void MX_FREERTOS_Init(void) {
   /* Create the queue(s) */
   /* definition and creation of EC20Queue */
 /* what about the sizeof here??? cd native code */
-//	osMessageQDef(EC20Queue, 16, sizeof(EC20_MSG_T));
+//  osMessageQDef(EC20Queue, 16, uint16_t);
 //  EC20QueueHandle = osMessageCreate(osMessageQ(EC20Queue), NULL);
 
   /* definition and creation of mqttQueue */
 /* what about the sizeof here??? cd native code */
   osMessageQDef(mqttQueue, 16, uint16_t);
   mqttQueueHandle = osMessageCreate(osMessageQ(mqttQueue), NULL);
+
+  /* definition and creation of controlQueue */
+/* what about the sizeof here??? cd native code */
+  osMessageQDef(controlQueue, 2, uint16_t);
+  controlQueueHandle = osMessageCreate(osMessageQ(controlQueue), NULL);
+
+  /* definition and creation of statusQueue */
+/* what about the sizeof here??? cd native code */
+  osMessageQDef(statusQueue, 2, uint16_t);
+  statusQueueHandle = osMessageCreate(osMessageQ(statusQueue), NULL);
 
   /* USER CODE BEGIN RTOS_QUEUES */
   /* add queues, ... */
@@ -205,6 +225,7 @@ void decoding(void const * argument)
 	char open[] = {"open"};
 	char close[] = {"close"};
 	char stop[] = {"stop"};
+	uint8_t mqttcontrol;
 	BaseType_t xResult;
 	const TickType_t xMaxBlockTime = pdMS_TO_TICKS(100); /*  wait_time */
 	EC20_MSG_T *tcp_c_msg;
@@ -219,27 +240,40 @@ void decoding(void const * argument)
 		{
 			if (strncmp((char *)&tcp_c_msg->Data, (char *)&open, 4) == 0)
 			{
-				while(openlock())
+				mqttcontrol = openlock;
+				if (xQueueSend(mqttQueueHandle, (void *) &mqttcontrol, (TickType_t)10) != pdPASS)
 				{
-					osDelay(10);
+					/* 发送失败，即使等待了10个时钟节拍 */
+					//mqttcontrol = normal;
 				}
+				else
+				{
+					/* 发送成功 */                  
+				}
+				
 			}
 			if (strncmp((char *)&tcp_c_msg->Data, (char *)&close, 5) == 0)
 			{
-				while (closelock())
+				mqttcontrol = closelock;
+				if (xQueueSend(mqttQueueHandle, (void *) &mqttcontrol, (TickType_t)10) != pdPASS)
 				{
-					osDelay(10);
+					/* 发送失败，即使等待了10个时钟节拍 */
+					//mqttcontrol = normal;
 				}
+				else
+				{
+					/* 发送成功 */                  
+				}
+			
 			}
 			if (strncmp((char *)&tcp_c_msg->Data, (char *)&stop, 4) == 0)
 			{
-				stoplock();
 			}
-		 
 			/* memcpy(tcp_c_msg->Data, rs485, sizeof(rs485));*/
 			HAL_UART_Transmit(&huart2, tcp_c_msg->Data, tcp_c_msg->lengh, 0xFFFF);
 			memset(&EC20_MSG, 0, sizeof(EC20_MSG));
 		}
+	
 		osDelay(100);
 	}
 	//__set_FAULTMASK(1);
@@ -251,27 +285,130 @@ void decoding(void const * argument)
 void monitor(void const * argument)
 {
   /* USER CODE BEGIN monitor */
-	uint8_t open, close;
+	BaseType_t xResult;
+	const TickType_t xMaxBlockTime = pdMS_TO_TICKS(200); /* 设置最大等待时间为ms */
+	uint8_t mqttflag;
+	uint8_t status,control,mqttcontrol;
+	uint16_t vbat;
+	uint16_t Current;
 	HAL_GPIO_WritePin(infra_red_GPIO_Port, infra_red_Pin, GPIO_PIN_SET);
+	HAL_TIM_PWM_Start(&htim5, TIM_CHANNEL_1);
   /* Infinite loop */
   for(;;)
   {
-	 
-	  open = HAL_GPIO_ReadPin(open_GPIO_Port, open_Pin);
-	  close = HAL_GPIO_ReadPin(close_GPIO_Port, close_Pin);	
-	  USER_Printf("open:%d\r\n", open);
-	  USER_Printf("close:%d\r\n", close);
-//	  if (open==1&close==1)
-//	  {
-//		  
-//	  }
-	  
+	  xResult = xQueueReceive(mqttQueueHandle, (void *)&mqttcontrol, (TickType_t)xMaxBlockTime);
+	  if (xResult == pdPASS)
+	  {
+		  control = mqttcontrol;
+		  mqttflag = 1;
+	  }
+	  else
+	  {
+		  /* 超时 */
+		
+	  }
+	  if (mqttflag==0)
+	  {
+		  status = read_lockstatus();
+		  if (status == lock_illegalopen)
+		  {
+			  control = closelock;
+		  }
+		  else  if (status == lock_illegalclose)
+		  {
+			  control = openlock;
+		  }
+		  else control = stoplock; 
+	  }
+
+	  xResult = xQueueReceive(statusQueueHandle, (void *)&status, (TickType_t)xMaxBlockTime);
+	  if (xResult == pdPASS)
+	  {
+		  if ( status == Blockage )
+		  { 
+			  if (control == closelock)
+			  {
+				  control = openlock;
+			  }
+			  else if (control == openlock)
+			  {
+				  control = closelock;
+			  } 
+		  }
+		  else if (status == lock_open||status ==lock_close||status ==lock_stop)
+		  {
+			  mqttflag = 0;
+		  }
+	  }
+	  else
+	  {
+		  /* 超时 */
+		
+	  }
+	
+	  if (xQueueSend(controlQueueHandle, (void *) &control, (TickType_t)10) != pdPASS)
+	  {
+		  /* 发送失败，即使等待了10个时钟节拍 */
+		 
+	  }
+	  else
+	  {
+		  /* 发送成功 */                  
+	  }
+	  lcok_readadc(NULL, &vbat);
+//	  USER_Printf("vbat:%d  ", vbat);
+	  USER_Printf("control:%d  ", control);
+	  USER_Printf("status:%d\r\n", status);
 	  HAL_GPIO_TogglePin(LED_GPIO_Port, LED_Pin);
 	   osDelay(30);
 	  HAL_GPIO_TogglePin(LED_GPIO_Port, LED_Pin);
-	  osDelay(500);
+	  osDelay(100);
+	 
   }
   /* USER CODE END monitor */
+}
+
+/* control function */
+void control(void const * argument)
+{
+  /* USER CODE BEGIN control */
+	BaseType_t xResult;
+	const TickType_t xMaxBlockTime = pdMS_TO_TICKS(200); /* 设置最大等待时间为ms */
+	uint16_t Current;
+	uint8_t lockstatus,lockcontrol;
+  /* Infinite loop */
+  for(;;)
+  {
+	  xResult = xQueueReceive(controlQueueHandle, (void *)&lockcontrol,(TickType_t)xMaxBlockTime);
+        
+	  if (xResult == pdPASS)
+	  {
+		  lockstatus= lock_control(lockcontrol);
+		  lcok_readadc(&Current,NULL);
+		  USER_Printf("Current:%d\r\n", Current);
+		  if (Current>1000)
+		  {
+			  lockstatus = Blockage; 
+		  }
+	  }
+	  else
+	  {
+		  /* 超时 */
+		
+	  }
+	  if (xQueueSend(statusQueueHandle, (void *) &lockstatus, (TickType_t)10) != pdPASS)
+	  {
+		  /* 发送失败，即使等待了10个时钟节拍 */
+		 
+	  }
+	  else
+	  {
+		  /* 发送成功 */                  
+	  }
+//	  HAL_GPIO_TogglePin(S_LED_GPIO_Port, S_LED_Pin);
+    osDelay(1);
+  }
+  /* USER CODE END control */
 }
 
 /* USER CODE BEGIN Application */
@@ -324,47 +461,7 @@ void USER_Printf(const char *pFormat, ...)
 	va_end(arg_ptr);
 //	        xQueueSend(g_OutQueue, &buffer[i], portMAX_DELAY);
 }
-uint8_t openlock(void)
-{
-	uint8_t ret;
-	HAL_GPIO_WritePin(Mh_GPIO_Port, Mh_Pin, GPIO_PIN_SET);
-	HAL_GPIO_WritePin(Ml_GPIO_Port, Ml_Pin, GPIO_PIN_RESET);
-	if (HAL_GPIO_ReadPin(close_GPIO_Port, close_Pin) == 0 && HAL_GPIO_ReadPin(open_GPIO_Port, open_Pin) == 0)
-	{
-		HAL_GPIO_WritePin(Mh_GPIO_Port, Mh_Pin, GPIO_PIN_RESET);
-		HAL_GPIO_WritePin(Ml_GPIO_Port, Ml_Pin, GPIO_PIN_RESET);	 
-		ret = 0;
-	}
-	else
-	{
-		ret = 1;	
-	}
-	return ret;
-}
-uint8_t closelock(void)
-{
-	uint8_t ret;
-	HAL_GPIO_WritePin(Mh_GPIO_Port, Mh_Pin, GPIO_PIN_RESET);
-	HAL_GPIO_WritePin(Ml_GPIO_Port, Ml_Pin, GPIO_PIN_SET);
-	if (HAL_GPIO_ReadPin(close_GPIO_Port, close_Pin) == 1 && HAL_GPIO_ReadPin(open_GPIO_Port, open_Pin) == 1)
-	{
-		HAL_GPIO_WritePin(Mh_GPIO_Port, Mh_Pin, GPIO_PIN_RESET);
-		HAL_GPIO_WritePin(Ml_GPIO_Port, Ml_Pin, GPIO_PIN_RESET);	 
-		ret = 0;
-	}
-	else
-	{
-		ret = 1;
-	}
-	return ret;
-}
-uint8_t stoplock(void)
-{
-	uint8_t ret;
-	HAL_GPIO_WritePin(Mh_GPIO_Port, Mh_Pin, GPIO_PIN_RESET);
-	HAL_GPIO_WritePin(Ml_GPIO_Port, Ml_Pin, GPIO_PIN_RESET);
-	return ret;
-}
+
 
 /* USER CODE END Application */
 

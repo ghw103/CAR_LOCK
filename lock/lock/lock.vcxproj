@@ -76,6 +76,7 @@
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>
   <ItemGroup>
+    <ClCompile Include="..\..\BSP\Src\lock.c" />
     <ClCompile Include="..\..\Src\gpio.c" />
     <ClCompile Include="..\..\Src\adc.c" />
     <ClCompile Include="..\..\Src\freertos.c" />

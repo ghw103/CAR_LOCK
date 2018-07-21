@@ -474,5 +474,8 @@
     <ClCompile Include="..\..\Src\syscalls.c">
       <Filter>Source files</Filter>
     </ClCompile>
+    <ClCompile Include="..\..\BSP\Src\lock.c">
+      <Filter>Source files</Filter>
+    </ClCompile>
   </ItemGroup>
 </Project>
