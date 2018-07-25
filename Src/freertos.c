@@ -179,7 +179,7 @@ void StartDefaultTask(void const * argument)
 	//	{
 	//		Error_Handler();
 	//	}
-
+HAL_GPIO_WritePin(infra_red_GPIO_Port, infra_red_Pin, GPIO_PIN_SET);
 
   /* Infinite loop */
   for(;;)
@@ -205,15 +205,62 @@ void U_MQTT(void const * argument)
 //	ec20_cmd("AT+QICSGP=1,1,\"CMNET\",\"\",\"\",0", "ok", 10, 300);
 //	ec20_cmd("AT+QIACT=1", "ok", 10, 300);
 //	ec20_cmd("AT+QIOPEN=1,0,\"TCP\",\"202.182.113.229\",1992,0,1", "ok", 10, 300);
+/*----------------------------------------------------------------------------------*/
+	char open[] = { "open" };
+	char close[] = { "close" };
+	char stop[] = { "stop" };
+	uint8_t mqttcontrol;
+	BaseType_t xResult;
+	const TickType_t xMaxBlockTime = pdMS_TO_TICKS(100); /*  wait_time */
+	EC20_MSG_T *tcp_c_msg;
   /* Infinite loop */
   for(;;)
   { 
-	
+	  xResult = xQueueReceive(EC20QueueHandle,
+		  (void *)&tcp_c_msg,
+		  (TickType_t)xMaxBlockTime); /* time */
+	  if (xResult == pdPASS)
+	  {
+		  if (strncmp((char *)&tcp_c_msg->Data, (char *)&open, 4) == 0)
+		  {
+			  mqttcontrol = openlock;
+			  if (xQueueSend(mqttQueueHandle, (void *) &mqttcontrol, (TickType_t)10) != pdPASS)
+			  {
+				  /* 发�?�失败，即使等待�?10个时钟节�? */
+				  //mqttcontrol = normal;
+			  }
+			  else
+			  {
+				  /* 发�?�成�? */                  
+			  }
+				
+		  }
+		  if (strncmp((char *)&tcp_c_msg->Data, (char *)&close, 5) == 0)
+		  {
+			  mqttcontrol = closelock;
+			  if (xQueueSend(mqttQueueHandle, (void *) &mqttcontrol, (TickType_t)10) != pdPASS)
+			  {
+				  /* 发�?�失败，即使等待�?10个时钟节�? */
+				  //mqttcontrol = normal;
+			  }
+			  else
+			  {
+				  /* 发�?�成�? */                  
+			  }
+			
+		  }
+		  if (strncmp((char *)&tcp_c_msg->Data, (char *)&stop, 4) == 0)
+		  {
+		  }
+		  /* memcpy(tcp_c_msg->Data, rs485, sizeof(rs485));*/
+		  HAL_UART_Transmit(&huart2, tcp_c_msg->Data, tcp_c_msg->lengh, 0xFFFF);
+		  memset(&EC20_MSG, 0, sizeof(EC20_MSG));
+	  }
 //	  ec20_cmd("ATV1", "ok", 10, 300);
 	 
 	  
 //	  USER_Printf("hello\r\n");
-    osDelay(1000);
+    osDelay(50);
   }
   /* USER CODE END U_MQTT */
 }
@@ -222,58 +269,69 @@ void U_MQTT(void const * argument)
 void decoding(void const * argument)
 {
   /* USER CODE BEGIN decoding */
-	char open[] = {"open"};
-	char close[] = {"close"};
-	char stop[] = {"stop"};
-	uint8_t mqttcontrol;
 	BaseType_t xResult;
-	const TickType_t xMaxBlockTime = pdMS_TO_TICKS(100); /*  wait_time */
-	EC20_MSG_T *tcp_c_msg;
+	const TickType_t xMaxBlockTime= pdMS_TO_TICKS(100); /* 设置�?大等待时间为ms */
+	uint8_t status = stoplock, control, mqttcontrol;
+	uint8_t controlflag = 0, sendflag = 1;
 	//memset(tcp_c_msg, 0, sizeof(*tcp_c_msg));
   /* Infinite loop */
   for(;  ;)
 	{
-		xResult = xQueueReceive(EC20QueueHandle,
-			(void *)&tcp_c_msg,
-			(TickType_t)xMaxBlockTime); /* time */
+		xResult = xQueueReceive(mqttQueueHandle, (void *)&mqttcontrol, (TickType_t)xMaxBlockTime);
 		if (xResult == pdPASS)
 		{
-			if (strncmp((char *)&tcp_c_msg->Data, (char *)&open, 4) == 0)
-			{
-				mqttcontrol = openlock;
-				if (xQueueSend(mqttQueueHandle, (void *) &mqttcontrol, (TickType_t)10) != pdPASS)
-				{
-					/* 发送失败，即使等待了10个时钟节拍 */
-					//mqttcontrol = normal;
-				}
-				else
-				{
-					/* 发送成功 */                  
-				}
-				
-			}
-			if (strncmp((char *)&tcp_c_msg->Data, (char *)&close, 5) == 0)
-			{
-				mqttcontrol = closelock;
-				if (xQueueSend(mqttQueueHandle, (void *) &mqttcontrol, (TickType_t)10) != pdPASS)
-				{
-					/* 发送失败，即使等待了10个时钟节拍 */
-					//mqttcontrol = normal;
-				}
-				else
-				{
-					/* 发送成功 */                  
-				}
-			
-			}
-			if (strncmp((char *)&tcp_c_msg->Data, (char *)&stop, 4) == 0)
-			{
-			}
-			/* memcpy(tcp_c_msg->Data, rs485, sizeof(rs485));*/
-			HAL_UART_Transmit(&huart2, tcp_c_msg->Data, tcp_c_msg->lengh, 0xFFFF);
-			memset(&EC20_MSG, 0, sizeof(EC20_MSG));
+			control = mqttcontrol;
+			controlflag = 1;
+			sendflag = 0;
+			vTaskSuspend(monitorTaskHandle);
 		}
-	
+		else
+		{
+			/* 超时 */
+		
+		}
+		if (controlflag == 1)
+		{	if (sendflag == 0)
+			{
+				if (xQueueSend(controlQueueHandle, (void *) &control, (TickType_t)10) != pdPASS)
+				{
+					/* 发�?�失败，即使等待�?10个时钟节�? */
+				}
+				else
+				{
+					sendflag = 1;
+					/* 发�?�成�? */                  
+				} 
+			}
+			xResult = xQueueReceive(statusQueueHandle, (void *)&status, (TickType_t)xMaxBlockTime);
+			if (xResult == pdPASS)
+			{
+				if (status == Blockage)
+				{ 
+//					control = stoplock;
+//					sendflag = 0;
+					
+					if (control == closelock)
+					{
+						control = openlock;
+						sendflag = 0;
+					}
+					else if (control == openlock)
+					{
+						control = closelock;
+						sendflag = 0;
+					} 
+				}
+				else if (status == lock_open || status == lock_close || status == lock_stop)
+				{
+					vTaskResume(monitorTaskHandle);
+					controlflag = 0;
+					sendflag = 1;
+//					control = stoplock;
+				}
+			}
+
+		}
 		osDelay(100);
 	}
 	//__set_FAULTMASK(1);
@@ -286,85 +344,100 @@ void monitor(void const * argument)
 {
   /* USER CODE BEGIN monitor */
 	BaseType_t xResult;
-	const TickType_t xMaxBlockTime = pdMS_TO_TICKS(200); /* 设置最大等待时间为ms */
-	uint8_t mqttflag;
-	uint8_t status,control,mqttcontrol;
+	const TickType_t xMaxBlockTime = pdMS_TO_TICKS(100); /* 设置�?大等待时间为ms */
+
+	uint8_t controlflag = 0, sendflag = 1;
+	uint8_t status = lock_stop, oldstatus = lock_open, control, mqttcontrol;
 	uint16_t vbat;
 	uint16_t Current;
-	HAL_GPIO_WritePin(infra_red_GPIO_Port, infra_red_Pin, GPIO_PIN_SET);
-	HAL_TIM_PWM_Start(&htim5, TIM_CHANNEL_1);
-  /* Infinite loop */
-  for(;;)
-  {
-	  xResult = xQueueReceive(mqttQueueHandle, (void *)&mqttcontrol, (TickType_t)xMaxBlockTime);
-	  if (xResult == pdPASS)
-	  {
-		  control = mqttcontrol;
-		  mqttflag = 1;
-	  }
-	  else
-	  {
-		  /* 超时 */
+	status = read_lockstatus();
+	  /* Infinite loop */
+	for (;  ;)
+	{
+		if (controlflag == 0)
+		{
+			lcok_readadc(NULL, &vbat);
+			USER_Printf("vbat:%d  ", vbat);
+			if (status == lock_open || status == lock_close)
+			{
+				oldstatus = status;
+			}
 		
-	  }
-	  if (mqttflag==0)
-	  {
-		  status = read_lockstatus();
-		  if (status == lock_illegalopen)
-		  {
-			  control = closelock;
-		  }
-		  else  if (status == lock_illegalclose)
-		  {
-			  control = openlock;
-		  }
-		  else control = stoplock; 
-	  }
-
-	  xResult = xQueueReceive(statusQueueHandle, (void *)&status, (TickType_t)xMaxBlockTime);
-	  if (xResult == pdPASS)
-	  {
-		  if ( status == Blockage )
-		  { 
-			  if (control == closelock)
-			  {
-				  control = openlock;
-			  }
-			  else if (control == openlock)
-			  {
-				  control = closelock;
-			  } 
-		  }
-		  else if (status == lock_open||status ==lock_close||status ==lock_stop)
-		  {
-			  mqttflag = 0;
-		  }
-	  }
-	  else
-	  {
-		  /* 超时 */
+			status = read_lockstatus();
+			if (status == lock_illegalopen)
+			{
+				control = resetlock;
+				controlflag = 1;
+				sendflag = 0;
+				HAL_TIM_PWM_Start(&htim5, TIM_CHANNEL_1);
+			}
+			else  if (status == lock_illegalclose)
+			{
+				HAL_TIM_PWM_Start(&htim5, TIM_CHANNEL_1);
+				if (oldstatus == lock_open)
+				{
+					control = openlock;
+					controlflag = 1;
+					sendflag = 0;
+				}
+				else if (oldstatus == lock_close)
+				{
+					control = closelock;
+					controlflag = 1;	
+					sendflag = 0;
+				}
+				else
+				{
+					control = openlock;
+					controlflag = 1;	
+					sendflag = 0;
+				}	
+			}
+			else control = stoplock; 
+		}
+		if (controlflag == 1)
+		{
+			if (sendflag == 0)
+			{
+				if (xQueueSend(controlQueueHandle, (void *) &control, (TickType_t)10) != pdPASS)
+				{
+					/* 发�?�失败，即使等待�?10个时钟节�? */
+				}
+				else
+				{
+					sendflag = 1;
+					/* 发�?�成�? */                  
+				} 
+			}
+			xResult = xQueueReceive(statusQueueHandle, (void *)&status, (TickType_t)xMaxBlockTime);
+			if (xResult == pdPASS)
+			{
+				//				if (status == Blockage)
+				//				{ 
+				////					controlflag = 0;
+				//					control = stoplock;
+				//					sendflag = 0;
+				//				}
+							 if(status == lock_open || status == lock_close || status == lock_stop)
+				{
+					controlflag = 0;
+					sendflag = 1;
+					HAL_TIM_PWM_Stop(&htim5, TIM_CHANNEL_1);
+				}
+			}
+		}
+		read_distance();
+		USER_Printf("close:%d  ", HAL_GPIO_ReadPin(close_GPIO_Port, close_Pin));
+		USER_Printf("open:%d  ", HAL_GPIO_ReadPin(open_GPIO_Port, open_Pin));
+		USER_Printf("control:%d  ", control);
+		USER_Printf("oldstatus:%d ", oldstatus);
 		
-	  }
-	
-	  if (xQueueSend(controlQueueHandle, (void *) &control, (TickType_t)10) != pdPASS)
-	  {
-		  /* 发送失败，即使等待了10个时钟节拍 */
-		 
-	  }
-	  else
-	  {
-		  /* 发送成功 */                  
-	  }
-	  lcok_readadc(NULL, &vbat);
-//	  USER_Printf("vbat:%d  ", vbat);
-	  USER_Printf("control:%d  ", control);
-	  USER_Printf("status:%d\r\n", status);
-	  HAL_GPIO_TogglePin(LED_GPIO_Port, LED_Pin);
-	   osDelay(30);
-	  HAL_GPIO_TogglePin(LED_GPIO_Port, LED_Pin);
-	  osDelay(100);
-	 
-  }
+		USER_Printf("status:%d\r\n", status);
+		HAL_GPIO_TogglePin(LED_GPIO_Port, LED_Pin);
+		osDelay(30);
+		HAL_GPIO_TogglePin(LED_GPIO_Port, LED_Pin);
+		osDelay(100);
+	}
   /* USER CODE END monitor */
 }
 
@@ -373,40 +446,83 @@ void control(void const * argument)
 {
   /* USER CODE BEGIN control */
 	BaseType_t xResult;
-	const TickType_t xMaxBlockTime = pdMS_TO_TICKS(200); /* 设置最大等待时间为ms */
+	const TickType_t xMaxBlockTime = pdMS_TO_TICKS(50); /* 设置�?大等待时间为ms */
 	uint16_t Current;
-	uint8_t lockstatus,lockcontrol;
+	uint8_t lockstatus = lock_stop, lockcontrol, controlflag=0, Mcontrol;
+	USER_Printf("lockstatus:%d\r\n", lockstatus);
+	uint8_t retry=0;
+	uint32_t tickstart = 0U;
   /* Infinite loop */
   for(;;)
   {
-	  xResult = xQueueReceive(controlQueueHandle, (void *)&lockcontrol,(TickType_t)xMaxBlockTime);
-        
+	  xResult = xQueueReceive(controlQueueHandle, (void *)&lockcontrol,(TickType_t)xMaxBlockTime);     
 	  if (xResult == pdPASS)
 	  {
-		  lockstatus= lock_control(lockcontrol);
-		  lcok_readadc(&Current,NULL);
-		  USER_Printf("Current:%d\r\n", Current);
-		  if (Current>1000)
-		  {
-			  lockstatus = Blockage; 
-		  }
+//		  USER_Printf("lockstatus:%d\r\n", lockstatus);
+//		  if (lockstatus != Blockage && lockstatus != controling )
+//		  {
+			  Mcontrol = lockcontrol;
+			  controlflag = 1;
+				 retry = 0;
+//		  }
 	  }
 	  else
 	  {
 		  /* 超时 */
-		
 	  }
-	  if (xQueueSend(statusQueueHandle, (void *) &lockstatus, (TickType_t)10) != pdPASS)
+	  if (controlflag==1)
 	  {
-		  /* 发送失败，即使等待了10个时钟节拍 */
-		 
+		  lockstatus = lock_control(Mcontrol);
+		  retry++;
+		  USER_Printf("retry:%d  ", retry);
+		  //		  USER_Printf("close:%d  ", HAL_GPIO_ReadPin(close_GPIO_Port, close_Pin));
+		  //		  USER_Printf("open:%d \r\n ", HAL_GPIO_ReadPin(open_GPIO_Port, open_Pin) );
+		   if(retry == 20)
+		  {
+			  retry = 0;
+			  lcok_readadc(&Current, NULL);
+			  if (Current > 1500)
+			  { 
+				  lockstatus = Blockage; 
+				  HAL_TIM_PWM_Start(&htim5, TIM_CHANNEL_1);
+				  tickstart = HAL_GetTick();
+				  while (1)
+				  {
+					  if (((HAL_GetTick() - tickstart) > 1000))
+					  {
+						  break; 
+					  }
+//					  Mcontrol = stoplock;
+					  lock_control(stoplock);
+					  lcok_readadc(&Current, NULL);
+					  if (Current < 1500)
+					  {
+						 
+						  break;
+					  }
+				  
+				  }
+			  }
+		  }
+		  if (lockstatus == lock_open || lockstatus == lock_close || lockstatus == lock_stop)
+		  {
+			  controlflag = 0;
+			  HAL_TIM_PWM_Stop(&htim5, TIM_CHANNEL_1);
+		  }
+		  if (xQueueSend(statusQueueHandle, (void *) & lockstatus, (TickType_t)10) != pdPASS)
+		  {
+			  /* 发�?�失败，即使等待�?10个时钟节�? */
+		  }
+		  else
+		  {
+			 
+			  /* 发�?�成�? */                  
+		  } 
+		  osDelay(10);
 	  }
-	  else
-	  {
-		  /* 发送成功 */                  
-	  }
+	
 //	  HAL_GPIO_TogglePin(S_LED_GPIO_Port, S_LED_Pin);
-    osDelay(1);
+    osDelay(10);
   }
   /* USER CODE END control */
 }
@@ -459,7 +575,6 @@ void USER_Printf(const char *pFormat, ...)
 	vsnprintf(buffer, 128, pFormat, arg_ptr);
 	HAL_UART_Transmit(&huart2, (uint8_t *)buffer, strlen(buffer), 0xFFFF);
 	va_end(arg_ptr);
-//	        xQueueSend(g_OutQueue, &buffer[i], portMAX_DELAY);
 }
 
 

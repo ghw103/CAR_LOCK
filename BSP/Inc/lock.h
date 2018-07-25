@@ -26,6 +26,7 @@ typedef enum
 	openlock=0,
 	closelock,
 	stoplock,
+	resetlock,
 	normal,
 	
 	}locknum;	 
@@ -37,8 +38,9 @@ typedef enum
 	 uint8_t lock_control(uint8_t type);
 	void lcok_readadc(uint16_t * imax, uint16_t* vbat); 
 	 uint8_t  read_lockstatus(void);
-	 
+	 uint16_t read_distance();
 #endif
+	 
 	 
 	 
 	 

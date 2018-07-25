@@ -64,7 +64,7 @@
 extern ADC_HandleTypeDef hadc1;
 
 /* USER CODE BEGIN Private defines */
-
+	 DMA_HandleTypeDef hdma_adc1;
 /* USER CODE END Private defines */
 
 extern void _Error_Handler(char *, int);
