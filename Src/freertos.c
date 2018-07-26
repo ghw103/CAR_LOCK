@@ -90,7 +90,6 @@ void MX_FREERTOS_Init(void); /* (MISRA C 2004 rule 8.1) */
 
 /* USER CODE BEGIN FunctionPrototypes */
 #define COUNTOF(__BUFFER__)   (sizeof(__BUFFER__) / sizeof(*(__BUFFER__)))
-uint8_t ec20_cmd(char * cmd, char * ack, uint8_t retry, uint16_t timeout);
 //uint8_t openlock(void);
 //uint8_t closelock(void);
 //uint8_t stoplock(void);
@@ -195,16 +194,16 @@ HAL_GPIO_WritePin(infra_red_GPIO_Port, infra_red_Pin, GPIO_PIN_SET);
 void U_MQTT(void const * argument)
 {
   /* USER CODE BEGIN U_MQTT */
-//	ec20_cmd("ATE0", "ok", 10, 300);
-//	ec20_cmd("ATV1", "ok", 10, 300);
-//	ec20_cmd("AT", "ok", 10, 300);
-//	ec20_cmd("AT+CMEE=2", "ok", 10, 300);
-//	ec20_cmd("AT+CPIN?", "+CPIN: READY", 5, 1000);
-//	ec20_cmd("AT+CREG?", "+CREG: 0,1", 5, 1000);
-//	ec20_cmd("AT+CGREG?", "+CGREG: 0,1", 5, 1000);
-//	ec20_cmd("AT+QICSGP=1,1,\"CMNET\",\"\",\"\",0", "ok", 10, 300);
-//	ec20_cmd("AT+QIACT=1", "ok", 10, 300);
-//	ec20_cmd("AT+QIOPEN=1,0,\"TCP\",\"202.182.113.229\",1992,0,1", "ok", 10, 300);
+	ec20_send("AT", "OK", 10, 1000);
+	ec20_send("ATE1", "OK", 10, 1000);
+	ec20_send("ATV1", "OK", 10, 300);
+	ec20_send("AT+CMEE=2", "OK", 10, 300);
+	ec20_send("AT+CPIN?", "+CPIN: READY", 20, 1000);
+	ec20_send("AT+CREG?", "+CREG: 0,1", 60, 1000);
+	ec20_send("AT+CGREG?", "+CGREG: 0,1", 60, 1000);
+	ec20_send("AT+QICSGP=1,1,\"CTNET\",\"\",\"\",0", "OK", 10, 1000);
+	ec20_send("AT+QIACT=1", "OK", 10, 1000);
+//	ec20_send("AT+QIOPEN=1,0,\"TCP\",\"115.29.240.46\",9000,0,1", "ok", 10, 300);
 /*----------------------------------------------------------------------------------*/
 	char open[] = { "open" };
 	char close[] = { "close" };
@@ -270,7 +269,7 @@ void decoding(void const * argument)
 {
   /* USER CODE BEGIN decoding */
 	BaseType_t xResult;
-	const TickType_t xMaxBlockTime= pdMS_TO_TICKS(100); /* 设置�?大等待时间为ms */
+	const TickType_t xMaxBlockTime= pdMS_TO_TICKS(50); /* 设置�?大等待时间为ms */
 	uint8_t status = stoplock, control, mqttcontrol;
 	uint8_t controlflag = 0, sendflag = 1;
 	//memset(tcp_c_msg, 0, sizeof(*tcp_c_msg));
@@ -280,10 +279,10 @@ void decoding(void const * argument)
 		xResult = xQueueReceive(mqttQueueHandle, (void *)&mqttcontrol, (TickType_t)xMaxBlockTime);
 		if (xResult == pdPASS)
 		{
+			vTaskSuspend(monitorTaskHandle);
 			control = mqttcontrol;
 			controlflag = 1;
 			sendflag = 0;
-			vTaskSuspend(monitorTaskHandle);
 		}
 		else
 		{
@@ -308,19 +307,19 @@ void decoding(void const * argument)
 			{
 				if (status == Blockage)
 				{ 
-//					control = stoplock;
-//					sendflag = 0;
-					
-					if (control == closelock)
-					{
-						control = openlock;
-						sendflag = 0;
-					}
-					else if (control == openlock)
-					{
-						control = closelock;
-						sendflag = 0;
-					} 
+////					control = stoplock;
+////					sendflag = 0;
+//					
+//					if (control == closelock)
+//					{
+//						control = openlock;
+//						sendflag = 0;
+//					}
+//					else if (control == openlock)
+//					{
+//						control = closelock;
+//						sendflag = 0;
+//					} 
 				}
 				else if (status == lock_open || status == lock_close || status == lock_stop)
 				{
@@ -351,18 +350,26 @@ void monitor(void const * argument)
 	uint16_t vbat;
 	uint16_t Current;
 	status = read_lockstatus();
+	
+	char buf[50] = { 0 };
+	
+	uint8_t len;
+	
 	  /* Infinite loop */
 	for (;  ;)
 	{
 		if (controlflag == 0)
 		{
 			lcok_readadc(NULL, &vbat);
-			USER_Printf("vbat:%d  ", vbat);
+		//	USER_Printf("vbat:%d  \r\n", vbat);
 			if (status == lock_open || status == lock_close)
 			{
 				oldstatus = status;
 			}
-		
+			else
+			{
+				oldstatus = lock_open;
+			}
 			status = read_lockstatus();
 			if (status == lock_illegalopen)
 			{
@@ -426,13 +433,14 @@ void monitor(void const * argument)
 				}
 			}
 		}
-		read_distance();
-		USER_Printf("close:%d  ", HAL_GPIO_ReadPin(close_GPIO_Port, close_Pin));
-		USER_Printf("open:%d  ", HAL_GPIO_ReadPin(open_GPIO_Port, open_Pin));
-		USER_Printf("control:%d  ", control);
-		USER_Printf("oldstatus:%d ", oldstatus);
 		
-		USER_Printf("status:%d\r\n", status);
+		read_distance();
+//		USER_Printf("close:%d  ", HAL_GPIO_ReadPin(close_GPIO_Port, close_Pin));
+//		USER_Printf("open:%d  ", HAL_GPIO_ReadPin(open_GPIO_Port, open_Pin));
+//		USER_Printf("control:%d  ", control);
+//		USER_Printf("oldstatus:%d ", oldstatus);
+//		
+//		USER_Printf("status:%d\r\n", status);
 		HAL_GPIO_TogglePin(LED_GPIO_Port, LED_Pin);
 		osDelay(30);
 		HAL_GPIO_TogglePin(LED_GPIO_Port, LED_Pin);
@@ -448,95 +456,90 @@ void control(void const * argument)
 	BaseType_t xResult;
 	const TickType_t xMaxBlockTime = pdMS_TO_TICKS(50); /* 设置�?大等待时间为ms */
 	uint16_t Current;
-	uint8_t lockstatus = lock_stop, lockcontrol, controlflag=0, Mcontrol;
-	USER_Printf("lockstatus:%d\r\n", lockstatus);
+	uint8_t lock_status, lockcontrol, controlflag, M_control;
 	uint8_t retry=0;
 	uint32_t tickstart = 0U;
+	
+	M_control = normal;
+	lock_status = lock_stop;
+	controlflag = 0;
   /* Infinite loop */
   for(;;)
   {
 	  xResult = xQueueReceive(controlQueueHandle, (void *)&lockcontrol,(TickType_t)xMaxBlockTime);     
 	  if (xResult == pdPASS)
 	  {
-//		  USER_Printf("lockstatus:%d\r\n", lockstatus);
-//		  if (lockstatus != Blockage && lockstatus != controling )
-//		  {
-			  Mcontrol = lockcontrol;
-			  controlflag = 1;
-				 retry = 0;
-//		  }
+		  M_control = lockcontrol;
+			retry = 0;
 	  }
 	  else
 	  {
 		  /* 超时 */
+
 	  }
-	  if (controlflag==1)
+	  if (M_control != normal)
 	  {
-		  lockstatus = lock_control(Mcontrol);
-		  retry++;
-		  USER_Printf("retry:%d  ", retry);
-		  //		  USER_Printf("close:%d  ", HAL_GPIO_ReadPin(close_GPIO_Port, close_Pin));
-		  //		  USER_Printf("open:%d \r\n ", HAL_GPIO_ReadPin(open_GPIO_Port, open_Pin) );
-		   if(retry == 20)
+		  lock_status = lock_control(M_control);
+		  lcok_readadc(&Current, NULL);
+		  if (Current > 1500)
 		  {
-			  retry = 0;
-			  lcok_readadc(&Current, NULL);
-			  if (Current > 1500)
-			  { 
-				  lockstatus = Blockage; 
-				  HAL_TIM_PWM_Start(&htim5, TIM_CHANNEL_1);
-				  tickstart = HAL_GetTick();
-				  while (1)
-				  {
-					  if (((HAL_GetTick() - tickstart) > 1000))
-					  {
-						  break; 
-					  }
-//					  Mcontrol = stoplock;
+			  retry++;
+			  if(retry == 20)
+			  {
+				  retry = 0;
+				  lcok_readadc(&Current, NULL);
+				  if (Current > 1500)
+				  { 
+					  lock_status = Blockage; 
+					  HAL_TIM_PWM_Start(&htim5, TIM_CHANNEL_1);		
 					  lock_control(stoplock);
-					  lcok_readadc(&Current, NULL);
-					  if (Current < 1500)
+					  osDelay(500);
+					  if (M_control == openlock)
 					  {
-						 
-						  break;
+						  M_control = closelock;
 					  }
-				  
+					  else
+					  {
+						  M_control = openlock; 
+					  }
+					  lock_control(M_control);	
 				  }
 			  }
 		  }
-		  if (lockstatus == lock_open || lockstatus == lock_close || lockstatus == lock_stop)
+		  if (xQueueSend(statusQueueHandle, (void *)&lock_status, (TickType_t)10) == pdPASS)
 		  {
-			  controlflag = 0;
-			  HAL_TIM_PWM_Stop(&htim5, TIM_CHANNEL_1);
-		  }
-		  if (xQueueSend(statusQueueHandle, (void *) & lockstatus, (TickType_t)10) != pdPASS)
-		  {
-			  /* 发�?�失败，即使等待�?10个时钟节�? */
+			 
 		  }
 		  else
 		  {
-			 
-			  /* 发�?�成�? */                  
+			  //			  xQueueSend(statusQueueHandle, (void *)&lock_status, (TickType_t)10);
+			  			  /* error */                  
 		  } 
-		  osDelay(10);
+		  if (lock_status == lock_open || lock_status == lock_close || lock_status == lock_stop)
+		  {
+			  M_control = normal;
+			  HAL_TIM_PWM_Stop(&htim5, TIM_CHANNEL_1);
+		  }
+
 	  }
-	
-//	  HAL_GPIO_TogglePin(S_LED_GPIO_Port, S_LED_Pin);
-    osDelay(10);
+    osDelay(100);
   }
   /* USER CODE END control */
 }
 
 /* USER CODE BEGIN Application */
-uint8_t ec20_cmd(char * cmd,char * ack,uint8_t retry,uint16_t timeout)
+uint8_t ec20_send(char * cmd,char * ack,uint8_t retry,uint16_t timeout)
 {
 	uint8_t	ret = 1;
 	
 	BaseType_t xResult;
+	uint8_t recvtimes;
 	const TickType_t xMaxBlockTime = pdMS_TO_TICKS(timeout); /*  wait_time */
 	EC20_MSG_T *ec20_msg;
-	
-	USER_Printf("%s\r\n",cmd);
+	if (cmd!=NULL)
+	{
+		USER_Printf("%s\r\n", cmd);	 
+	}
 	while (retry--)
 	{
 		xResult = xQueueReceive(EC20QueueHandle,
@@ -544,24 +547,47 @@ uint8_t ec20_cmd(char * cmd,char * ack,uint8_t retry,uint16_t timeout)
 			(TickType_t)xMaxBlockTime); /* time */
 		if (xResult == pdPASS)
 		{
-			HAL_UART_Transmit(&huart2, ec20_msg->Data, ec20_msg->lengh, 0xFFFF);
-			if (strncmp((char *)&ec20_msg->Data, (char *)ack, sizeof(ack)) == 0)
+			if (recvtimes==0)
 			{
-				ret = 0;
-				memset(&EC20_MSG, 0, sizeof(EC20_MSG));
-				break;
+				if (strncmp((char *)cmd, (char *)cmd, sizeof(cmd)) == 0)
+				{
+					memset(&EC20_MSG, 0, sizeof(EC20_MSG));
+					recvtimes = 1;
+				}
 			}
-			/* memcpy(tcp_c_msg->Data, rs485, sizeof(rs485));*/
+			else if (recvtimes ==1)
+			{
+				recvtimes = 0;
+				HAL_UART_Transmit(&huart2, ec20_msg->Data, ec20_msg->lengh, 0xFFFF);
+				if (strstr((char *)&ec20_msg->Data, (char *)ack))
+				{
+					ret = 0;
+					memset(&EC20_MSG, 0, sizeof(EC20_MSG));
+					break;
+				}
+			}
+//			if (strncmp((char *)&ec20_msg->Data, (char *)ack, sizeof(ack)) == 0)
+//			{
+//				ret = 0;
+//				memset(&EC20_MSG, 0, sizeof(EC20_MSG));
+//				break;
+//			}
+			/* memcpy(tcp_c_msg->Data, rs485, sizeof(rs485));*/ 
 
 			memset(&EC20_MSG, 0, sizeof(EC20_MSG));
 		}
 		else
 		{
-			USER_Printf("%s\r\n", cmd);
-		}
+			if (cmd != NULL)
+			{
+				if (recvtimes == 0)
+				{
+					USER_Printf("%s\r\n", cmd);	 
+				}
 		
-	}
-	
+			}
+		}
+	}	
 	return ret;	
 	
 }

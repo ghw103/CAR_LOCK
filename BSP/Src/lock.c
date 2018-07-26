@@ -38,7 +38,6 @@ uint8_t lock_control(uint8_t type)
 			HAL_GPIO_WritePin(Ml_GPIO_Port, Ml_Pin, GPIO_PIN_RESET);	 
 			lock_status = lock_close;
 		}
-		
 		break;
 	case resetlock:
 		HAL_GPIO_WritePin(Mh_GPIO_Port, Mh_Pin, GPIO_PIN_RESET);
@@ -55,13 +54,10 @@ uint8_t lock_control(uint8_t type)
 		HAL_GPIO_WritePin(Mh_GPIO_Port, Mh_Pin, GPIO_PIN_RESET);
 		HAL_GPIO_WritePin(Ml_GPIO_Port, Ml_Pin, GPIO_PIN_RESET);
 		lock_status = lock_stop;
-		
+
 		break;
-//	
-		
 	default:
 		break;
-
 	}
 return lock_status;	
 }
@@ -211,3 +207,54 @@ void HAL_TIM_IC_CaptureCallback(TIM_HandleTypeDef *htim)
 		}
 	}
 }
+uint8_t ec20send(unsigned char* buffer, int len, int timeout_ms)
+{
+
+	char buf[50] = { 0 };
+	sprintf(buf,"AT+QISEND=0,%d", len);
+
+	if (ec20_send(buf,">", 1, 300) == 0)
+	{
+		HAL_UART_Transmit(&huart2, buffer, len, 0xFFFF);
+	}
+	return 0;
+}
+
+uint8_t ec20recv(unsigned char* buffer, int len, int timeout_ms)
+{
+	BaseType_t xResult;
+	const TickType_t xMaxBlockTime = pdMS_TO_TICKS(timeout_ms); /*  wait_time */
+	EC20_MSG_T *ec20_msg;
+	const char ack[] = { "+QIURC: \"recv\"" }; 
+	xResult = xQueueReceive(EC20QueueHandle,
+		(void *)&ec20_msg,
+		(TickType_t)xMaxBlockTime); /* time */
+	if (xResult == pdPASS)
+	{
+		HAL_UART_Transmit(&huart2, ec20_msg->Data, ec20_msg->lengh, 0xFFFF);
+		if (strncmp((char *)&ec20_msg->Data, (char *)ack, sizeof(ack)) == 0)
+		{
+			memset(&EC20_MSG, 0, sizeof(EC20_MSG));
+			xResult = xQueueReceive(EC20QueueHandle,
+				(void *)&ec20_msg,
+				(TickType_t)xMaxBlockTime); /* time */
+			if (xResult == pdPASS)
+			{
+				memcpy(buffer, ec20_msg->Data, ec20_msg->lengh);
+			}
+			else
+			{
+				
+			}
+			memset(&EC20_MSG, 0, sizeof(EC20_MSG));
+		}
+		/* memcpy(tcp_c_msg->Data, rs485, sizeof(rs485));*/
+
+		memset(&EC20_MSG, 0, sizeof(EC20_MSG));
+	}
+	else
+	{
+	}
+	return 0;
+}
+

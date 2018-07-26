@@ -6,7 +6,9 @@
 //#include <memory.h>
 #include <string.h>
 #include "usart.h"
+# include <stdio.h>
 
+ # include <stdlib.h>
 
 #ifdef __cplusplus
  extern "C" {
@@ -49,6 +51,7 @@ EC20_MSG_T  EC20_MSG ;
 	 
 void User_UART_IRQHandler(UART_HandleTypeDef *huart);	 
 void USER_Printf(const char *pFormat, ...);
+	 uint8_t ec20_send(char * cmd, char * ack, uint8_t retry, uint16_t timeout);
 #endif
 	 
 	 
